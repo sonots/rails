@@ -34,15 +34,28 @@ module ActiveRecord
     #
     # The exceptions AdapterNotSpecified, AdapterNotFound and ArgumentError
     # may be returned on an error.
+    #
+    # 引数はハッシュでもよいし、URLでもよい。
+    # デフォルトでは DATABASE_URL 環境変数が使われる。
+    # database.yml はどこだ？？
+    #
+    # => establish_connection は rails の initializes の中で呼ばれたりしている
+    # database.yml を読み込んだりはそっちでやられているはず
     def establish_connection(spec = ENV["DATABASE_URL"])
+      # URL をハッシュに分解したりしつつ resolver インスタンスを取得
       resolver = ConnectionAdapters::ConnectionSpecification::Resolver.new spec, configurations
-      spec = resolver.spec
+      spec = resolver.spec # ハッシュになってるので上書き
 
       unless respond_to?(spec.adapter_method)
         raise AdapterNotFound, "database configuration specifies nonexistent #{spec.config[:adapter]} adapter"
       end
 
+      # そのクラス用の ConnectionPool 全体を削除. 内部の connection も削除
       remove_connection
+      # ActiveRecord::RuntimeRegistry.connection_handler
+      # ConnectionAdapters::ConnectionHandler のほうかな？
+      # 正確にはここでは、ConnectionPool オブジェクトが作られて、設定情報をセットしているだけど、connection は作られていない
+      # connection は ActiveRecord::Base.connection が呼ばれたとき（必要になったとき)に作られ、キャッシュされる
       connection_handler.establish_connection self, spec
     end
 

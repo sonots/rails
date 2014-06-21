@@ -35,6 +35,9 @@ module ActiveRecord
     #   Post.find_by_sql ["SELECT title FROM posts WHERE author = ? AND created > ?", author_id, start_date]
     #   Post.find_by_sql ["SELECT body FROM comments WHERE author = :user_id OR approved_by = :user_id", { :user_id => user_id }]
     def find_by_sql(sql, binds = [])
+      # find_by_sql の中で、connection を読んでいるので、
+      # ここで毎回新しい connection を貼るようにしてしまうと、クエリごとに connection を貼ることになってしまう。。。
+      # うーん ....
       result_set = connection.select_all(sanitize_sql(sql), "#{name} Load", binds)
       column_types = {}
 

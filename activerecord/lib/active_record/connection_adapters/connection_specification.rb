@@ -29,20 +29,25 @@ module ActiveRecord
             raise AdapterNotSpecified unless defined?(Rails.env)
             resolve_string_connection Rails.env
           when Symbol, String
+            # :development とか
             resolve_string_connection config.to_s
           when Hash
+            # ハッシュで渡した場合
             resolve_hash_connection config
           end
         end
 
         private
         def resolve_string_connection(spec) # :nodoc:
+          # :development => databaseの設定情報 {host: port: database: ...}
           hash = configurations.fetch(spec) do |k|
+            # URLだった場合、分解してハッシュ形式に合わせる
             connection_url_to_hash(k)
           end
 
           raise(AdapterNotSpecified, "#{spec} database is not configured") unless hash
 
+          # resolve と言っているが、インスタンスを返しているだけ
           resolve_hash_connection hash
         end
 
@@ -51,6 +56,7 @@ module ActiveRecord
 
           raise(AdapterNotSpecified, "database configuration does not specify adapter") unless spec.key?(:adapter)
 
+          # Adapter の gem を require している
           path_to_adapter = "active_record/connection_adapters/#{spec[:adapter]}_adapter"
           begin
             require path_to_adapter
@@ -62,6 +68,7 @@ module ActiveRecord
 
           adapter_method = "#{spec[:adapter]}_connection"
 
+          # インスタンス化して返しているだけ
           ConnectionSpecification.new(spec, adapter_method)
         end
 

@@ -236,6 +236,9 @@ module ActiveRecord #:nodoc:
   # Note, all the attributes for all the cases are kept in the same table. Read more:
   # http://www.martinfowler.com/eaaCatalog/singleTableInheritance.html
   #
+  # 別の database に接続する場合
+  # database の分だけ、connection pool の数がさらに増えちゃうってことだよな
+  #
   # == Connection to multiple databases in different models
   #
   # Connections are usually created through ActiveRecord::Base.establish_connection and retrieved

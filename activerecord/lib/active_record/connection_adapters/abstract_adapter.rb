@@ -89,6 +89,7 @@ module ActiveRecord
       def initialize(connection, logger = nil, pool = nil) #:nodoc:
         super()
 
+        # AbstractAdapter.new で connection が貼られている
         @connection          = connection
         @in_use              = false
         @instrumenter        = ActiveSupport::Notifications.instrumenter

@@ -16,6 +16,9 @@ module ActiveRecord
     #
     # == Introduction
     #
+    # 100個スレッドがあっても、5connection
+    # プロセスごとに 5 connection になるから、24 コアだと 120 connection とかになるよね ...
+    #
     # A connection pool synchronizes thread access to a limited number of
     # database connections. The basic idea is that each thread checks out a
     # database connection from the pool, uses that connection, and checks the
@@ -31,6 +34,11 @@ module ActiveRecord
     #
     # Connections can be obtained and used from a connection pool in several
     # ways:
+    #
+    # Activerecord::Base.clear_active_connections!
+    # Activerecord::Base.connection_pool.checkout
+    # ActiveRecord::Base.connection_pool.with_connection(&block)
+    # などがあるようだ
     #
     # 1. Simply use ActiveRecord::Base.connection as with Active Record 2.1 and
     #    earlier (pre-connection-pooling). Eventually, when you're done with
@@ -54,6 +62,11 @@ module ActiveRecord
     # There are several connection-pooling-related options that you can add to
     # your database connection configuration:
     #
+    # pool: 5 で数を指定できる
+    # checkout_timeout timeout するまでの時間
+    # reaping_frequency: dead connection を直す周期. デフォルトはやらない
+    # dead_connection_timeout: dead 判定するまでの時間
+    #
     # * +pool+: number indicating size of connection pool (default 5)
     # * +checkout_timeout+: number of seconds to block and wait for a connection
     #   before giving up and raising a timeout error (default 5 seconds).
@@ -71,9 +84,12 @@ module ActiveRecord
       #
       # The Queue in stdlib's 'thread' could replace this class except
       # stdlib's doesn't support waiting with a timeout.
+      #
+      # Queue でハンドリングしている
       class Queue
         def initialize(lock = Monitor.new)
           @lock = lock
+          # ConditionalVariable かな？
           @cond = @lock.new_cond
           @num_waiting = 0
           @queue = []
@@ -239,7 +255,7 @@ module ActiveRecord
         @checkout_timeout = spec.config[:checkout_timeout] || 5
         @dead_connection_timeout = spec.config[:dead_connection_timeout] || 5
         @reaper  = Reaper.new self, spec.config[:reaping_frequency]
-        @reaper.run
+        @reaper.run # これが別スレッドで動いてるのか
 
         # default max pool size to 5
         @size = (spec.config[:pool] && spec.config[:pool].to_i) || 5
@@ -248,7 +264,7 @@ module ActiveRecord
         @reserved_connections = ThreadSafe::Cache.new(:initial_capacity => @size)
 
         @connections         = []
-        @automatic_reconnect = true
+        @automatic_reconnect = true # 設定不能？？？
 
         @available = Queue.new self
       end
@@ -258,10 +274,16 @@ module ActiveRecord
       #
       # #connection can be called any number of times; the connection is
       # held in a hash keyed by the thread id.
+      #
+      # ActiveRecord::Base.connection をよぶと connection が作られる
+      # ここでキャッシュしちゃってるから、checkout だけ monkey patch してもダメなんじゃないか？
+      # で、この connection をいつどのタイミングで読んでいるのかが問題。
+      # １リクエストで何度も呼ばれるようであれば、考えもの。そのリクエスト単位でキャッシュする仕組みが必要
       def connection
         # this is correctly done double-checked locking
         # (ThreadSafe::Cache's lookups have volatile semantics)
         @reserved_connections[current_connection_id] || synchronize do
+          # checkout が本体
           @reserved_connections[current_connection_id] ||= checkout
         end
       end
@@ -288,6 +310,8 @@ module ActiveRecord
       # If a connection already exists yield it to the block. If no connection
       # exists checkout a connection, yield it to the block, and checkin the
       # connection when finished.
+      #
+      # こういうブロックうけとるメソッドもあったのか
       def with_connection
         connection_id = current_connection_id
         fresh_connection = true unless active_connection?
@@ -346,6 +370,11 @@ module ActiveRecord
       #
       # Raises:
       # - ConnectionTimeoutError: no connection can be obtained from the pool.
+      #
+      # checkout は connection pool から持ってくるやつ。
+      # connection pool になかったら接続する。
+      # connection pool を使いたくなかったら、acquire_connection で
+      # 常にあたらしい接続がかえるようにすればよさそうka?
       def checkout
         synchronize do
           conn = acquire_connection
@@ -359,6 +388,8 @@ module ActiveRecord
       #
       # +conn+: an AbstractAdapter object, which was obtained by earlier by
       # calling +checkout+ on this pool.
+      #
+      # checkin は connection pool の返すやつ
       def checkin(conn)
         synchronize do
           conn.run_callbacks :checkin do
@@ -410,9 +441,11 @@ module ActiveRecord
       # Raises:
       # - ConnectionTimeoutError if a connection could not be acquired
       def acquire_connection
+        # poll は Remove the top of the queue だそうな
         if conn = @available.poll
           conn
         elsif @connections.size < @size
+          # @size より小さければ new connection
           checkout_new_connection
         else
           @available.poll(@checkout_timeout)
@@ -432,6 +465,7 @@ module ActiveRecord
       end
 
       def new_connection
+        # spec.adapter_method で mysql2_connection などが呼ばれて、新しい connection を返す
         Base.send(spec.adapter_method, spec.config)
       end
 
@@ -505,6 +539,7 @@ module ActiveRecord
       end
 
       def establish_connection(owner, spec)
+        # owner == ActiveRecord::Base
         @class_to_pool.clear
         raise RuntimeError, "Anonymous class is not allowed." unless owner.name
         owner_to_pool[owner.name] = ConnectionAdapters::ConnectionPool.new(spec)
@@ -529,6 +564,8 @@ module ActiveRecord
       end
 
       def clear_all_connections!
+        require 'pry'
+        binding.pry
         connection_pool_list.each(&:disconnect!)
       end
 
@@ -556,6 +593,7 @@ module ActiveRecord
         if pool = owner_to_pool.delete(owner.name)
           @class_to_pool.clear
           pool.automatic_reconnect = false
+          # pool 内の connection 全てを disconnect (checkin して disconnect)
           pool.disconnect!
           pool.spec.config
         end

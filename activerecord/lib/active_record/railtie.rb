@@ -121,6 +121,8 @@ module ActiveRecord
     # and then establishes the connection.
     initializer "active_record.initialize_database" do |app|
       ActiveSupport.on_load(:active_record) do
+        # config/database.yml を読み込む at rails/application/configuration.rb
+        # config/database.yml も ENV['DATABASE_URL'] もないと例外が出る
         self.configurations = app.config.database_configuration || {}
         establish_connection
       end

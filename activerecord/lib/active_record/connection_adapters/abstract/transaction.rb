@@ -1,5 +1,6 @@
 module ActiveRecord
   module ConnectionAdapters
+    # Transaction の State などはこちらに
     class Transaction #:nodoc:
       attr_reader :connection
 

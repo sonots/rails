@@ -1,5 +1,7 @@
 module ActiveRecord
   module ConnectionAdapters # :nodoc:
+    # select, delete, transaction などのひな形はこちらに
+    # adapter ごとに override するものはする
     module DatabaseStatements
       def initialize
         super

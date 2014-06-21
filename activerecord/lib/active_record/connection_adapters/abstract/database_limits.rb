@@ -1,5 +1,7 @@
 module ActiveRecord
   module ConnectionAdapters # :nodoc:
+    # 制限がいろいろ書いてある
+    # 全 Adapter のうち一番きついものに会わせてる可能性が高いな
     module DatabaseLimits
 
       # Returns the maximum length of a table alias.

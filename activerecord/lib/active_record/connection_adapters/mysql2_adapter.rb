@@ -1,9 +1,11 @@
 require 'active_record/connection_adapters/abstract_mysql_adapter'
 
+# こんな書き方できるの？？
 gem 'mysql2', '~> 0.3.13'
 require 'mysql2'
 
 module ActiveRecord
+  # ActiveRecord::ConnectionHandling にメソッドを専用メソッドを生やしているようだ
   module ConnectionHandling # :nodoc:
     # Establishes a connection to the database that's used by all Active Record objects.
     def mysql2_connection(config)
@@ -53,6 +55,7 @@ module ActiveRecord
 
       # HELPER METHODS ===========================================
 
+      # インターフェースをあわせるためにラップしているようだ
       def each_hash(result) # :nodoc:
         if block_given?
           result.each(:as => :hash, :symbolize_keys => true) do |row|
@@ -73,6 +76,7 @@ module ActiveRecord
 
       # QUOTING ==================================================
 
+      # インターフェースをあわせるためにラップしているようだ
       def quote_string(string)
         @connection.escape(string)
       end
